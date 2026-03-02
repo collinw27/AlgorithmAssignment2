@@ -8,6 +8,7 @@ class Cache
 {
 protected:
     unsigned cacheSize;
+    unsigned totalMisses = 0;
 
     Cache(unsigned size) : cacheSize{size} {
         if (cacheSize <= 0)
@@ -20,14 +21,13 @@ public:
     virtual void simulateRead(int value) = 0;
 
     // Returns the total number of misses since the instance was created
-    virtual unsigned getTotalMisses() = 0;
+    unsigned getTotalMisses() { return totalMisses; }
 };
 
 class FIFOCache : public Cache
 {
     map<int, unsigned> cache; // Maps VALUE -> FIRST_READ_TIME
     unsigned currentTime = 0;
-    unsigned totalMisses = 0;
 
 public:
 
@@ -55,8 +55,40 @@ public:
             cache.erase(oldest);
         }
     }
+};
 
-    virtual unsigned getTotalMisses() override { return totalMisses; }
+class LRUCache : public Cache
+{
+    map<int, unsigned> cache; // Maps VALUE -> RECENT_READ_TIME
+    unsigned currentTime = 0;
+
+public:
+
+    LRUCache(unsigned size) : Cache{size}, cache{} {}
+
+    virtual void simulateRead(int value) override {
+
+        // Track a miss if cache doesn't contain value
+        if (cache.find(value) == cache.end()) {
+            ++totalMisses;
+            cache.emplace(value, currentTime);
+        }
+        cache[value] = currentTime; // Flag value as recently used
+        ++currentTime;
+
+        // Evict least-recent member if necessary
+        if (cache.size() > cacheSize) {
+            auto it = cache.begin();
+            auto oldest = it;
+            while (it != cache.end())
+            {
+                if (it->second < oldest->second)
+                    oldest = it;
+                ++it;
+            }
+            cache.erase(oldest);
+        }
+    }
 };
 
 void readIntFromFile(std::ifstream& file, int& var) {
@@ -66,9 +98,8 @@ void readIntFromFile(std::ifstream& file, int& var) {
 }
 
 int main(int argc, char* argv[]) {
-
     try {
-        
+
         // Filepath should be argument 1
         if (argc != 2)
             throw runtime_error("Filepath must be only argument.");
@@ -85,11 +116,14 @@ int main(int argc, char* argv[]) {
 
         // Simulate cache
         FIFOCache FIFO(k);
+        LRUCache LRU(k);
         for (int i = 0; i < m; ++i) {
             readIntFromFile(file, buffer);
             FIFO.simulateRead(buffer);
+            LRU.simulateRead(buffer);
         }
-        cout << "Total misses: " << FIFO.getTotalMisses() << endl;
+        cout << "Total misses (FIFO): " << FIFO.getTotalMisses() << endl;
+        cout << "Total misses (LRU): " << LRU.getTotalMisses() << endl;
     }
     catch(const runtime_error& e) {
         cout << "Error: " << e.what() << endl;
