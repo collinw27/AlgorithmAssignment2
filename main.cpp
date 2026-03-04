@@ -1,6 +1,10 @@
 #include <iostream>
 #include <fstream>
 #include <map>
+#include <vector>
+#include <set>
+#include <unordered_map>
+#include <stdexcept>
 
 using namespace std;
 
@@ -89,6 +93,58 @@ public:
             cache.erase(oldest);
         }
     }
+};
+
+class OPTFFCache
+{
+    unsigned cacheSize;
+    unsigned totalMisses = 0;
+
+    // value -> next use index (based on most recent request of that value)
+    unordered_map<int, int> cache;
+
+    // ordered by (nextUseIndex, value); farthest in future is at the end
+    set<pair<int, int>> order;
+
+public:
+
+    OPTFFCache(unsigned size) : cacheSize{size}, cache{}, order{} {
+        if (cacheSize <= 0) {
+            throw runtime_error("Invalid cache size");
+        }
+    }
+
+    // For request at position i:
+    //   value = requests[i]
+    //   nextUse = index of next occurrence of value after i, or INF if none
+    void simulateRead(int value, int nextUse) {
+
+        // HIT: update its next-use record
+        auto it = cache.find(value);
+        if (it != cache.end()) {
+            order.erase({it->second, value});
+            it->second = nextUse;
+            order.insert({nextUse, value});
+            return;
+        }
+
+        // MISS
+        ++totalMisses;
+
+        // Evict farthest in future if full
+        if (cache.size() >= cacheSize) {
+            auto victim = prev(order.end());
+            int victimValue = victim->second;
+            order.erase(victim);
+            cache.erase(victimValue);
+        }
+
+        // Insert new value
+        cache.emplace(value, nextUse);
+        order.insert({nextUse, value});
+    }
+
+    unsigned getTotalMisses() { return totalMisses; }
 };
 
 void readIntFromFile(std::ifstream& file, int& var) {
