@@ -148,9 +148,9 @@ public:
 };
 
 void readIntFromFile(std::ifstream& file, int& var) {
-    if (file.eof())
-        throw runtime_error("EOF reached");
-    file >> var;
+    if (!(file >> var)) {
+        throw runtime_error("Bad input while reading integer");
+    }
 }
 
 int main(int argc, char* argv[]) {
@@ -169,17 +169,51 @@ int main(int argc, char* argv[]) {
         int k, m, buffer;
         readIntFromFile(file, k);
         readIntFromFile(file, m);
+        //cout << "k=" << k << " m=" << m << endl;
+
+        vector<int> requests;
+        requests.reserve(m);
+
+        for (int i = 0; i < m; ++i) {
+            if (!(file >> buffer)) {
+                throw runtime_error("Failed while reading request #" + to_string(i+1));
+            }
+            requests.push_back(buffer);
+        }
 
         // Simulate cache
         FIFOCache FIFO(k);
         LRUCache LRU(k);
         for (int i = 0; i < m; ++i) {
-            readIntFromFile(file, buffer);
-            FIFO.simulateRead(buffer);
-            LRU.simulateRead(buffer);
+            FIFO.simulateRead(requests[i]);
+            LRU.simulateRead(requests[i]);
         }
-        cout << "Total misses (FIFO): " << FIFO.getTotalMisses() << endl;
-        cout << "Total misses (LRU): " << LRU.getTotalMisses() << endl;
+
+        // Precompute next occurrence for each request position
+        // nextPos[i] = next index where requests[i] appears again, or INF if never
+        int INF = m + 1;
+        vector<int> nextPos(m, INF);
+        // value -> next index (scanning from right)
+        unordered_map<int, int> nextSeen;
+
+        for (int i = m - 1; i >= 0; --i) {
+            int v = requests[i];
+            if (nextSeen.find(v) != nextSeen.end())
+                nextPos[i] = nextSeen[v];
+            else
+                nextPos[i] = INF;
+            nextSeen[v] = i;
+        }
+
+        // Simulate OPTFF
+        OPTFFCache OPTFF(k);
+        for (int i = 0; i < m; ++i) {
+            OPTFF.simulateRead(requests[i], nextPos[i]);
+        }
+
+        cout << "FIFO  : " << FIFO.getTotalMisses() << endl;
+        cout << "LRU   : " << LRU.getTotalMisses() << endl;
+        cout << "OPTFF : " << OPTFF.getTotalMisses() << endl;
     }
     catch(const runtime_error& e) {
         cout << "Error: " << e.what() << endl;
